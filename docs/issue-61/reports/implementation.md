@@ -56,8 +56,41 @@ that runs once core is reachable.
 ## Upstream basis
 docs/issue-61/proposals/2026-08-09-test-env-resolution-adoption.md
 
+## Phase-2 continuation (live-check follow-up)
+A live check (running every script under `tests/` with
+`CLAUDE_PLUGIN_ROOT_CORE` unset AND `HOME` pointed at an empty scratch dir,
+so neither the env var nor the `$HOME`-based candidates could resolve core)
+found `tests/product-assumption-mapping-gate-tests.sh` still passing its
+full 26-assertion suite (exit 0) instead of SKIPping (exit 75) — the other
+5 scripts correctly SKIPped under the same simulated-unreachable
+condition. Root cause: this script's candidate loop
+(`tests/product-assumption-mapping-gate-tests.sh:10-12`) carried a
+hardcoded absolute path, `/home/jwjung/tokenmaxxxer/tokenmaxxxer-core/core`,
+left over from before the prior commit's convention rewrite — it bypasses
+`$HOME` entirely, so on this machine it kept resolving core even when the
+convention's own `$HOME`-based candidates were made unreachable. Fixed by
+replacing the candidate list with the same two `$HOME`-based candidates
+the other 5 scripts use (`$HOME/tokenmaxxxer/tokenmaxxxer-core/core`,
+`$HOME/.claude/plugins/marketplaces/tokenmaxxxer/runs/rulebooks/tokenmaxxxer-core/core`).
+Re-verified: all 6 scripts now exit 75 with the SKIP message under the
+simulated-unreachable condition, and `product-assumption-mapping-gate-tests.sh`
+still passes all 26 assertions unchanged with core reachable.
+`tests/deny-only-check.sh` and `tests/parse-check.sh` were also checked —
+both have no core dependency by design (require an explicit `<hooks-dir>`
+argument; documented in `docs/handbooks/tests.md` and
+`docs/issue-51/reports/product-discovery.md`) and are unaffected by this
+convention; calling either with no argument is a usage error (`exit 2`),
+not the SKIP contract's concern.
+
 ## What did not work
-None — no attempt was undone or replaced during this build.
+- Ran the full `tests/*.sh` sweep with only `CLAUDE_PLUGIN_ROOT_CORE`
+  unset (no `HOME` override): every script exited 0/pass, because this
+  machine's sibling core checkout at
+  `$HOME/tokenmaxxxer/tokenmaxxxer-core/core` auto-resolves — expected
+  per the convention, but it meant the sweep never actually exercised the
+  SKIP path. Had to additionally override `HOME` to a directory with no
+  core checkout to force genuine unreachability and expose the
+  `product-assumption-mapping-gate-tests.sh` defect above.
 
 ## Doc placement
 - [x] `docs/handbooks/tests.md` updated with the SKIP message/exit-75

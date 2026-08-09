@@ -7,9 +7,8 @@ HOOKS="$HERE/../product-assumption-mapping/hooks"
 # Resolution order and SKIP contract per docs/specs/test-env-resolution.md
 # (on-the-record issue #551).
 if [ -z "${CLAUDE_PLUGIN_ROOT_CORE:-}" ]; then
-  for cand in "$(cd "$HERE/.." && pwd -P)/core" \
-              /home/jwjung/tokenmaxxxer/tokenmaxxxer-core/core \
-              "$HERE/../../tokenmaxxxer-core/core"; do
+  for cand in "$HOME/tokenmaxxxer/tokenmaxxxer-core/core" \
+              "$HOME/.claude/plugins/marketplaces/tokenmaxxxer/runs/rulebooks/tokenmaxxxer-core/core"; do
     if [ -s "$cand/hooks/lib/gate-lib.sh" ]; then export CLAUDE_PLUGIN_ROOT_CORE="$cand"; break; fi
   done
 fi
