@@ -28,6 +28,19 @@ themselves and their test harnesses can locate core's `gate-lib.sh`/
 `gate-lib.py`/`compliance-check.sh` without it being set externally in a
 dev checkout.
 
+On a plain checkout where none of those candidates resolve to a
+non-empty `gate-lib.sh` (no `CLAUDE_PLUGIN_ROOT_CORE` and no sibling core
+checkout — e.g. a bare `main` clone), every script in `tests/` that
+depends on core SKIPs instead of failing: it prints
+`SKIP: core plugin unreachable — unverifiable outside spawn env` to
+stderr and exits `75`, a distinct code from a real assertion failure.
+`run-gate-tests.sh` propagates the same SKIP verdict for the whole
+dispatcher when every sub-suite it ran also SKIPped. This follows the
+canonical resolution order and SKIP contract landed at
+`docs/specs/test-env-resolution.md` (on-the-record issue #551);
+`tests/deny-only-check.sh` and `tests/parse-check.sh` have no core
+dependency and are unaffected.
+
 ## Coverage
 
 - Each `product-*` plugin's `methodology-gate.sh` sources core's

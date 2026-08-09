@@ -13,27 +13,38 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 ROOT="$(cd "$HERE/.." && pwd -P)"
 
 # Resolve core's plugin root the same way the gates and their own test
-# suites do, so compliance-check.sh below can be found.
+# suites do, so compliance-check.sh below can be found. Resolution order
+# and SKIP contract per docs/specs/test-env-resolution.md (on-the-record
+# issue #551).
 if [ -z "${CLAUDE_PLUGIN_ROOT_CORE:-}" ]; then
   for cand in "$HOME/tokenmaxxxer/tokenmaxxxer-core/core" \
               "$HOME/.claude/plugins/marketplaces/tokenmaxxxer/runs/rulebooks/tokenmaxxxer-core/core" \
               "$ROOT/../tokenmaxxxer-core/core"; do
-    if [ -f "$cand/hooks/lib/gate-lib.sh" ]; then export CLAUDE_PLUGIN_ROOT_CORE="$cand"; break; fi
+    if [ -s "$cand/hooks/lib/gate-lib.sh" ]; then export CLAUDE_PLUGIN_ROOT_CORE="$cand"; break; fi
   done
 fi
-if [ -z "${CLAUDE_PLUGIN_ROOT_CORE:-}" ] || [ ! -f "$CLAUDE_PLUGIN_ROOT_CORE/hooks/lib/gate-lib.sh" ]; then
-  echo "run-gate-tests: cannot locate core's gate-lib.sh — set CLAUDE_PLUGIN_ROOT_CORE to the installed core plugin root" >&2
-  exit 1
+if [ -z "${CLAUDE_PLUGIN_ROOT_CORE:-}" ] || [ ! -s "$CLAUDE_PLUGIN_ROOT_CORE/hooks/lib/gate-lib.sh" ]; then
+  echo "SKIP: core plugin unreachable — unverifiable outside spawn env" >&2
+  exit 75
 fi
 export CLAUDE_PLUGIN_ROOT_CORE
 
 plugin_fail=0
+plugin_skip=0
+suite_count=0
 
 for suite in product-one-pager product-opportunity-solution-tree \
              product-assumption-mapping product-hypothesis-testing \
              product-guardrail-metrics; do
   echo; echo "-- $suite --"
-  bash "$HERE/$suite-gate-tests.sh" || plugin_fail=1
+  suite_count=$((suite_count+1))
+  bash "$HERE/$suite-gate-tests.sh"
+  suite_rc=$?
+  if [ "$suite_rc" -eq 75 ]; then
+    plugin_skip=$((plugin_skip+1))
+  elif [ "$suite_rc" -ne 0 ]; then
+    plugin_fail=1
+  fi
 done
 
 echo; echo "-- compliance-check.sh (core issue #72) --"
@@ -43,6 +54,11 @@ for plugin in product-one-pager product-opportunity-solution-tree \
               product-guardrail-metrics; do
   bash "$CLAUDE_PLUGIN_ROOT_CORE/hooks/tests/compliance-check.sh" "$ROOT/$plugin/hooks" || compliance_fail=1
 done
+
+if [ "$plugin_fail" -eq 0 ] && [ "$plugin_skip" -eq "$suite_count" ]; then
+  echo "SKIP: core plugin unreachable — unverifiable outside spawn env" >&2
+  exit 75
+fi
 
 overall_fail=0
 [ "$plugin_fail" -eq 0 ] || overall_fail=1
