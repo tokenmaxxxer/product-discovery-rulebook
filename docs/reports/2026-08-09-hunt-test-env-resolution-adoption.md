@@ -64,3 +64,66 @@ loop to treat a sub-suite's exit 75 as SKIP rather than folding it into
 docs/handbooks/tests.md (and ideally README.md) as files phase-2 will
 need to touch so the documented run/fallback contract doesn't go stale
 the moment the SKIP behavior ships.
+
+## before-landing — stance 0: assume the gate just touched is bypassable — find the bypass
+
+Verdict: FINDING — the dispatcher's "all sub-suites skipped" aggregation branch in tests/run-gate-tests.sh (lines ~58-61) is dead code, unreachable given the script's own top-level resolution check, so the SKIP/FAIL aggregation it claims to provide for that case never actually runs.
+Kind: design-error
+Seed: tests/run-gate-tests.sh (SKIP/exit-75 aggregation logic added across the 6 test scripts)
+cap_seconds: 120
+tier: default
+diff_stat_lines: 21-200
+started_at: 2026-08-09T00:00:00Z
+ended_at: 2026-08-09T00:03:30Z
+
+### Reproduce
+```
+# 1. Core unreachable: dispatcher exits 75 at the TOP check, before the
+#    suite loop (lines 33-45) ever runs a single subprocess.
+export CLAUDE_PLUGIN_ROOT_CORE=""
+export HOME=/nonexistent-home
+bash tests/run-gate-tests.sh; echo "EXIT=$?"
+
+# 2. Core reachable (normal dev machine): every sub-suite inherits the
+#    exact same exported CLAUDE_PLUGIN_ROOT_CORE and re-runs the identical
+#    "-s $CLAUDE_PLUGIN_ROOT_CORE/hooks/lib/gate-lib.sh" check, so none of
+#    them skip either.
+unset CLAUDE_PLUGIN_ROOT_CORE
+bash tests/run-gate-tests.sh 2>&1 | tail -5
+```
+
+### Observed
+Run 1: `SKIP: core plugin unreachable — unverifiable outside spawn env` printed by the
+*top-level* check, exit 75, before the `for suite in ...` loop (which increments
+`plugin_skip`) executes at all — `plugin_skip` never gets a chance to be set from a
+subprocess in this path.
+
+Run 2: with a real core plugin present, output ends `run-gate-tests: all 5 plugin
+suites + compliance-check.sh passed`, `EXIT=0`, i.e. `plugin_skip=0` for every suite —
+confirming the only way any suite could independently emit exit-75 (an inherited,
+already-exported `CLAUDE_PLUGIN_ROOT_CORE` failing the identical `-s .../gate-lib.sh`
+check that the parent already validated) cannot occur without the parent having
+already exited 75 first.
+
+So the block at the end of run-gate-tests.sh:
+```
+if [ "$plugin_fail" -eq 0 ] && [ "$plugin_skip" -eq "$suite_count" ]; then
+  echo "SKIP: core plugin unreachable — unverifiable outside spawn env" >&2
+  exit 75
+fi
+```
+is written to catch "all 5 sub-suites individually reported SKIP," but under the
+script's own inheritance model (`export CLAUDE_PLUGIN_ROOT_CORE` before the loop),
+that condition is unreachable: either the top check already failed and the whole
+script exited 75 before compliance-check.sh and the loop ever ran, or it succeeded
+and every child necessarily passes the same check too, so `plugin_skip` stays 0.
+
+### Expected
+Either the code should not exist (since it can never fire and gives false confidence
+the "partial/total sub-suite skip" case is handled), or the design should actually
+allow sub-suites to skip independently of the parent's check (e.g. by not
+pre-exporting a validated CLAUDE_PLUGIN_ROOT_CORE, or by each suite having its own
+additional resolution axis) so the aggregation logic has a real code path to
+exercise instead of being dead weight that will bit-rot unnoticed (a hunk that
+"looks like" it handles the partial-skip / all-skip composition case but never
+actually gets invoked in any real run).

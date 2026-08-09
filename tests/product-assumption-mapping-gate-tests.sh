@@ -4,16 +4,20 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 HOOKS="$HERE/../product-assumption-mapping/hooks"
 
-export CLAUDE_PLUGIN_ROOT_CORE="${CLAUDE_PLUGIN_ROOT_CORE:-$(cd "$HERE/.." && pwd -P)/core}"
-if [ ! -f "$CLAUDE_PLUGIN_ROOT_CORE/hooks/lib/gate-lib.sh" ]; then
-  for cand in /home/jwjung/tokenmaxxxer/tokenmaxxxer-core/core "$HERE/../../tokenmaxxxer-core/core"; do
-    if [ -f "$cand/hooks/lib/gate-lib.sh" ]; then
-      CLAUDE_PLUGIN_ROOT_CORE="$cand"
-      export CLAUDE_PLUGIN_ROOT_CORE
-      break
-    fi
+# Resolution order and SKIP contract per docs/specs/test-env-resolution.md
+# (on-the-record issue #551).
+if [ -z "${CLAUDE_PLUGIN_ROOT_CORE:-}" ]; then
+  for cand in "$(cd "$HERE/.." && pwd -P)/core" \
+              /home/jwjung/tokenmaxxxer/tokenmaxxxer-core/core \
+              "$HERE/../../tokenmaxxxer-core/core"; do
+    if [ -s "$cand/hooks/lib/gate-lib.sh" ]; then export CLAUDE_PLUGIN_ROOT_CORE="$cand"; break; fi
   done
 fi
+if [ -z "${CLAUDE_PLUGIN_ROOT_CORE:-}" ] || [ ! -s "$CLAUDE_PLUGIN_ROOT_CORE/hooks/lib/gate-lib.sh" ]; then
+  echo "SKIP: core plugin unreachable — unverifiable outside spawn env" >&2
+  exit 75
+fi
+export CLAUDE_PLUGIN_ROOT_CORE
 
 pass=0; fail=0
 report() { if [ "$2" = "$1" ]; then pass=$((pass+1)); printf 'ok     %-34s %s\n' "$3" "$2"; else fail=$((fail+1)); printf 'FAIL   %-34s want=%s got=%s\n' "$3" "$1" "$2"; fi; }

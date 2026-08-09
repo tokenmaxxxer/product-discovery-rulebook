@@ -12,16 +12,18 @@ HOOKS="$HERE/../product-guardrail-metrics/hooks"
 # same way the real runtime does so subprocess runs below can find
 # gate-lib.sh/gate-lib.py (precedent: accessibility-rulebook's
 # run-methodology-gate-tests.sh).
+# Resolution order and SKIP contract per docs/specs/test-env-resolution.md
+# (on-the-record issue #551).
 if [ -z "${CLAUDE_PLUGIN_ROOT_CORE:-}" ]; then
   for cand in "$HERE/../core" \
               "$HOME/tokenmaxxxer/tokenmaxxxer-core/core" \
               "$HOME/.claude/plugins/marketplaces/tokenmaxxxer/runs/rulebooks/tokenmaxxxer-core/core"; do
-    if [ -f "$cand/hooks/lib/gate-lib.sh" ]; then export CLAUDE_PLUGIN_ROOT_CORE="$cand"; break; fi
+    if [ -s "$cand/hooks/lib/gate-lib.sh" ]; then export CLAUDE_PLUGIN_ROOT_CORE="$cand"; break; fi
   done
 fi
-if [ -z "${CLAUDE_PLUGIN_ROOT_CORE:-}" ] || [ ! -f "$CLAUDE_PLUGIN_ROOT_CORE/hooks/lib/gate-lib.sh" ]; then
-  echo "product-guardrail-metrics-gate-tests: cannot locate core's gate-lib.sh — set CLAUDE_PLUGIN_ROOT_CORE to the installed core plugin root" >&2
-  exit 1
+if [ -z "${CLAUDE_PLUGIN_ROOT_CORE:-}" ] || [ ! -s "$CLAUDE_PLUGIN_ROOT_CORE/hooks/lib/gate-lib.sh" ]; then
+  echo "SKIP: core plugin unreachable — unverifiable outside spawn env" >&2
+  exit 75
 fi
 
 pass=0; fail=0
