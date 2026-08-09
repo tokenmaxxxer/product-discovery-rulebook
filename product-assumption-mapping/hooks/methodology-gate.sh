@@ -11,12 +11,13 @@ payload="$(cat)"
 deny() {
   printf '{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":%s}}\n' \
     "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1" 2>/dev/null || echo '"product-assumption-mapping: refused"')"
+  printf '%s\n' "$1" >&2
   exit 2
 }
 
-command -v python3 >/dev/null 2>&1 || deny "product-assumption-mapping: refused — python3 not available, failing closed."
+command -v python3 >/dev/null 2>&1 || deny "product-assumption-mapping: refused — python3 not available, failing closed. ; required by product-assumption-mapping/hooks/methodology-gate.sh — see docs/handbooks/tests.md"
 
-[ -n "$payload" ] || deny "product-assumption-mapping: refused — empty stdin payload."
+[ -n "$payload" ] || deny "product-assumption-mapping: refused — empty stdin payload. ; required by product-assumption-mapping/hooks/methodology-gate.sh — see docs/handbooks/tests.md"
 
 # --- Bash-tool coverage: scan command for proposal-path-shaped write targets
 bash_cmd="$(printf '%s' "$payload" | python3 -c '
@@ -73,7 +74,7 @@ print(json.dumps({
 ' 2>/dev/null)"
 
 first_line="$(printf '%s\n' "$parsed" | head -n 1)"
-[ "$first_line" = "__OK__" ] || deny "product-assumption-mapping: refused — malformed or non-dict tool_input."
+[ "$first_line" = "__OK__" ] || deny "product-assumption-mapping: refused — malformed or non-dict tool_input. ; required by product-assumption-mapping/hooks/methodology-gate.sh — see docs/handbooks/tests.md"
 
 fields_json="$(printf '%s\n' "$parsed" | tail -n +2)"
 tool_name="$(printf '%s' "$fields_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tool_name"])')"
@@ -107,7 +108,7 @@ issue_n="$(printf '%s' "$rel_path" | sed -E 's#^docs/issue-([0-9]+)/proposals/.*
 
 # --- order-constraint precondition (copy-identical across the four plugins)
 current_state="$root/docs/issue-$issue_n/reports/product-discovery/current-state.md"
-[ -f "$current_state" ] || deny "product-assumption-mapping: refused — proposal write precedes its own current-state survey"
+[ -f "$current_state" ] || deny "product-assumption-mapping: refused — proposal write precedes its own current-state survey ; required by product-assumption-mapping/hooks/methodology-gate.sh — see docs/handbooks/tests.md"
 
 abs_path="$root/$rel_path"
 
@@ -146,7 +147,7 @@ sys.stdout.write(new_text)
 ' "$payload" "$abs_path")"
 
 recon_marker="$(printf '%s\n' "$resulting_text" | head -n 1)"
-[ "$recon_marker" = "__RECON_OK__" ] || deny "product-assumption-mapping: refused — cannot determine resulting content"
+[ "$recon_marker" = "__RECON_OK__" ] || deny "product-assumption-mapping: refused — cannot determine resulting content ; required by product-assumption-mapping/hooks/methodology-gate.sh — see docs/handbooks/tests.md"
 body="$(printf '%s\n' "$resulting_text" | tail -n +2)"
 
 # --- facet checks -----------------------------------------------------------

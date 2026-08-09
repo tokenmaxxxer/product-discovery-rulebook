@@ -28,15 +28,16 @@ gate_kill_switch_active "${PRODUCT_OPPORTUNITY_SOLUTION_TREE_GATE_OFF:-}" || { t
 
 role="${CLAUDE_ROLE:-product-opportunity-solution-tree}"
 deny() {
+  printf '%s\n' "$1" >&2
   printf '{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":%s}}\n' \
     "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1" 2>/dev/null || echo '"product-opportunity-solution-tree: refused"')"
   exit 2
 }
 
-command -v python3 >/dev/null 2>&1 || deny "product-opportunity-solution-tree: refused — methodology-gate.sh requires python3, which is not on PATH; denying rather than guessing."
+command -v python3 >/dev/null 2>&1 || deny "product-opportunity-solution-tree: refused — methodology-gate.sh requires python3, which is not on PATH; denying rather than guessing. ; required by product-opportunity-solution-tree/hooks/methodology-gate.sh — see docs/handbooks/tests.md"
 
 payload="$(cat 2>/dev/null || true)"
-[ -n "$payload" ] || deny "product-opportunity-solution-tree: refused — empty tool-use payload on stdin; cannot evaluate the methodology gate."
+[ -n "$payload" ] || deny "product-opportunity-solution-tree: refused — empty tool-use payload on stdin; cannot evaluate the methodology gate. ; required by product-opportunity-solution-tree/hooks/methodology-gate.sh — see docs/handbooks/tests.md"
 
 _target="$(printf '%s' "$payload" | python3 -c '
 import json,sys
@@ -91,7 +92,7 @@ if [ -z "$root" ]; then
   root="$(git -C "$d" rev-parse --show-toplevel 2>/dev/null || true)"
 fi
 [ -z "$root" ] && root="$(git -C "$(pwd -P)" rev-parse --show-toplevel 2>/dev/null || true)"
-[ -z "$root" ] && deny "product-opportunity-solution-tree: refused — no project root could be determined; failing closed (methodology check cannot run)."
+[ -z "$root" ] && deny "product-opportunity-solution-tree: refused — no project root could be determined; failing closed (methodology check cannot run). ; required by product-opportunity-solution-tree/hooks/methodology-gate.sh — see docs/handbooks/tests.md"
 
 # Bash-tool coverage: scan tool_input.command for path-shaped tokens that
 # hit the survey/proposal/record patterns before invoking the python

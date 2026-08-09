@@ -44,14 +44,23 @@ run() {
 }
 
 # run_raw want name payload_json [env...]
+# Forced-refusal cases capture stderr and assert it names the unmet element,
+# instead of discarding it, per docs/handbooks/tests.md.
 run_raw() {
   local want="$1" name="$2" payload="$3"; shift 3
   td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"
   mkdir -p "$td/$(dirname "$CURRENT_STATE")"
   printf 'current state survey\n' > "$td/$CURRENT_STATE"
-  printf '%s' "$payload" | env CLAUDE_PROJECT_DIR="$td" "$@" /bin/bash "$HOOKS/methodology-gate.sh" >/dev/null 2>&1
+  stderr="$(printf '%s' "$payload" | env CLAUDE_PROJECT_DIR="$td" "$@" /bin/bash "$HOOKS/methodology-gate.sh" 2>&1 1>/dev/null)"
   rc=$?; case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="exit-$rc" ;; esac
   rm -rf "$td"; report "$want" "$got" "$name"
+  if [ "$want" = "deny" ]; then
+    if [ -n "$stderr" ]; then
+      pass=$((pass+1)); printf 'ok     %-38s stderr non-empty\n' "$name-stderr"
+    else
+      fail=$((fail+1)); printf 'FAIL   %-38s stderr was empty on forced refusal\n' "$name-stderr"
+    fi
+  fi
 }
 
 FULL='## Hypothesis
@@ -126,11 +135,16 @@ rm -rf "$td"; report deny "$got" kill-switch-unrecognized-stays-active
 # Edit reconstruction failure: old_string not present in (nonexistent) file.
 td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"
 mkdir -p "$td/$(dirname "$CURRENT_STATE")"; printf 'x\n' > "$td/$CURRENT_STATE"
-printf '{"tool_name":"Edit","tool_input":{"file_path":"%s","old_string":"nope","new_string":"x"},"cwd":"%s"}' \
+stderr="$(printf '{"tool_name":"Edit","tool_input":{"file_path":"%s","old_string":"nope","new_string":"x"},"cwd":"%s"}' \
   "$PROPOSAL" "$td" \
-  | env CLAUDE_PROJECT_DIR="$td" /bin/bash "$HOOKS/methodology-gate.sh" >/dev/null 2>&1
+  | env CLAUDE_PROJECT_DIR="$td" /bin/bash "$HOOKS/methodology-gate.sh" 2>&1 1>/dev/null)"
 rc=$?; case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="exit-$rc" ;; esac
 rm -rf "$td"; report deny "$got" edit-reconstruction-failure
+if [ -n "$stderr" ]; then
+  pass=$((pass+1)); printf 'ok     %-38s stderr non-empty\n' edit-reconstruction-failure-stderr
+else
+  fail=$((fail+1)); printf 'FAIL   %-38s stderr was empty on forced refusal\n' edit-reconstruction-failure-stderr
+fi
 
 # Edit with replace_all: true against a multiply-occurring old_string.
 td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"

@@ -30,15 +30,16 @@ gate_kill_switch_active "${PRODUCT_HYPOTHESIS_TESTING_GATE_OFF:-}" || { cat >/de
 deny() {
   printf '{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":%s}}\n' \
     "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1" 2>/dev/null || echo '"product-hypothesis-testing: refused"')"
+  printf '%s\n' "$1" >&2
   exit 2
 }
 
-trap 'deny "product-hypothesis-testing: refused — gate failed closed on an internal error."' ERR
+trap 'deny "product-hypothesis-testing: refused — gate failed closed on an internal error; required by product-hypothesis-testing/hooks/methodology-gate.sh — see docs/handbooks/tests.md"' ERR
 
-command -v python3 >/dev/null 2>&1 || deny "product-hypothesis-testing: refused — python3 is not available; failing closed."
+command -v python3 >/dev/null 2>&1 || deny "product-hypothesis-testing: refused — python3 is not available; failing closed; required by product-hypothesis-testing/hooks/methodology-gate.sh — see docs/handbooks/tests.md"
 
 payload="$(cat)"
-[ -n "$payload" ] || deny "product-hypothesis-testing: refused — empty stdin payload."
+[ -n "$payload" ] || deny "product-hypothesis-testing: refused — empty stdin payload; required by product-hypothesis-testing/hooks/methodology-gate.sh — see docs/handbooks/tests.md"
 
 # Bash-tool write coverage: scan tool_input.command tokens for a match
 # against the proposal/record path patterns before the python payload runs.
@@ -55,7 +56,7 @@ if [ -n "$bash_cmd" ]; then
   for tok in $(printf '%s\n' "$bash_cmd" | grep -oE '[[:alnum:]_./~$-]+' || true); do
     if printf '%s' "$tok" | grep -qE 'docs/issue-[0-9]+/proposals/[^/]*product-discovery[^/]*\.md$' \
       || printf '%s' "$tok" | grep -qE 'docs/issue-[0-9]+/reports/product-discovery\.md$'; then
-      deny "product-hypothesis-testing: refused — Bash command targets the proposal/record path; failing closed."
+      deny "product-hypothesis-testing: refused — Bash command targets the proposal/record path; failing closed; required by product-hypothesis-testing/hooks/methodology-gate.sh — see docs/handbooks/tests.md"
     fi
   done
 fi

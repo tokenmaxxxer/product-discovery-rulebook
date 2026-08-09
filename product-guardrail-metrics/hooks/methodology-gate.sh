@@ -24,15 +24,16 @@ gate_kill_switch_active "${PRODUCT_GUARDRAIL_METRICS_GATE_OFF:-}" || { trap - EX
 deny() {
   printf '{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":%s}}\n' \
     "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1" 2>/dev/null || echo '"product-guardrail-metrics: refused"')"
+  printf '%s\n' "$1" >&2
   exit 2
 }
 
-trap 'deny "product-guardrail-metrics: refused — gate failed closed on an internal error."' ERR
+trap 'deny "product-guardrail-metrics: refused — gate failed closed on an internal error; required by product-guardrail-metrics/hooks/methodology-gate.sh — see docs/handbooks/tests.md"' ERR
 
-command -v python3 >/dev/null 2>&1 || deny "product-guardrail-metrics: refused — python3 is not available; failing closed."
+command -v python3 >/dev/null 2>&1 || deny "product-guardrail-metrics: refused — python3 is not available; failing closed; required by product-guardrail-metrics/hooks/methodology-gate.sh — see docs/handbooks/tests.md"
 
 payload="$(cat)"
-[ -n "$payload" ] || deny "product-guardrail-metrics: refused — empty stdin payload."
+[ -n "$payload" ] || deny "product-guardrail-metrics: refused — empty stdin payload; required by product-guardrail-metrics/hooks/methodology-gate.sh — see docs/handbooks/tests.md"
 
 # Resolve project root: CLAUDE_PROJECT_DIR (validated) -> git toplevel -> cwd.
 root=""
@@ -73,7 +74,7 @@ if [ -n "$bash_cmd" ]; then
     [ -n "$tok" ] || continue
     if [[ "$tok" =~ (^|/)docs/issue-[0-9]+/proposals/[^/]*product-discovery[^/]*\.md$ ]] || \
        [[ "$tok" =~ (^|/)docs/issue-[0-9]+/reports/product-discovery\.md$ ]]; then
-      deny "product-guardrail-metrics: refused — a Bash command targets the proposal/record path directly; use Write/Edit/MultiEdit so guardrail fields can be checked."
+      deny "product-guardrail-metrics: refused — a Bash command targets the proposal/record path directly; use Write/Edit/MultiEdit so guardrail fields can be checked; required by product-guardrail-metrics/hooks/methodology-gate.sh — see docs/handbooks/tests.md"
     fi
   done <<< "$(gate_bash_write_targets "$bash_cmd")"
 fi
