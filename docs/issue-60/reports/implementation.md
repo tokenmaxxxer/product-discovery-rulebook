@@ -1,9 +1,19 @@
 ---
-code_under_review: pending-commit
+code_under_review:
+  - product-opportunity-solution-tree/hooks/methodology-gate.sh
+  - product-hypothesis-testing/hooks/methodology-gate.sh
+  - product-guardrail-metrics/hooks/methodology-gate.sh
+  - product-one-pager/hooks/methodology-gate.sh
+  - product-assumption-mapping/hooks/methodology-gate.sh
+  - tests/product-opportunity-solution-tree-gate-tests.sh
+  - tests/product-hypothesis-testing-gate-tests.sh
+  - tests/product-guardrail-metrics-gate-tests.sh
+  - tests/product-one-pager-gate-tests.sh
+  - tests/product-assumption-mapping-gate-tests.sh
 type: fix
 breaking: false
 verdict: pass
-loop_state: committing
+loop_state: landed
 ---
 
 # implementation record — issue #60
