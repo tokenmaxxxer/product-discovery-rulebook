@@ -84,6 +84,22 @@ rather than silently assumed fixed.
   `deny()` call, add a guard around that specific path in the same file
   and document the crash path inline as a comment at the site.
 
+## Residual risk (flagged, not fixed here)
+
+Warrant-hunt (after-proposal, stance 0, `docs/reports/2026-08-09-hunt-methodology-gate-nonempty-refusal-reason.md`)
+found that `product-assumption-mapping/hooks/methodology-gate.sh` has no
+`ERR` trap (unlike `product-hypothesis-testing` and
+`product-guardrail-metrics`, which both install
+`trap 'deny "..."' ERR`). An ungated `python3 -c` crash in that file can
+fall through to an allow-shaped exit without ever calling `deny()` — a
+fail-open bypass distinct from #60's empty-reason symptom, since the
+crash never reaches `deny()` in the first place. This proposal's stderr
+fix does not address it (there is no deny() call on that path to add
+`>&2` to). Flagged for a follow-up issue rather than pulled into this
+proposal's write set, since it's a different defect class (fail-open vs.
+silent-reason) with its own fix shape (add an ERR trap, not touch
+`deny()`).
+
 ## Out of scope
 
 - The external "core" plugin's `gate-lib.sh` (not in this repo).
