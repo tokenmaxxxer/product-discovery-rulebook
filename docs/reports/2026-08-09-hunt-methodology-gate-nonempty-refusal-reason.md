@@ -51,3 +51,55 @@ EXIT:0
 
 ### Expected
 Any internal-error crash in the judge should fail closed and call `deny()` with a diagnosable reason (as the sibling files' ERR trap already does), not silently fall through toward an allow-shaped exit. Since the proposal's write set for this file only adds `>&2` inside `deny()`, and this crash path never reaches `deny()`, the "every refusal carries a non-empty reason" acceptance criterion is unmet for this specific bypass — because there is no refusal to begin with, the check is silently skipped rather than failing closed with a message.
+
+## before-landing — stance 2: assume this guard goes silent when its own input is malformed — make it go silent
+
+Verdict: FINDING — product-one-pager's facet-check refusals (the main methodology denials the gate exists to enforce) never reach stderr; only its bash-level bootstrap denials do
+Kind: silent-failure
+Seed: diff to product-opportunity-solution-tree, product-hypothesis-testing, product-guardrail-metrics, product-one-pager, product-assumption-mapping hooks/methodology-gate.sh (adds printf '%s\n' "$1" >&2 to the bash-level deny()) plus tests/product-*-gate-tests.sh stderr assertions
+cap_seconds: 180
+tier: size:>5-files
+diff_stat_lines: 159
+started_at: 2026-08-09T00:00:00Z
+ended_at: 2026-08-09T00:20:00Z
+
+### Reproduce
+Run the existing test helper directly (avoids the sandbox's own board-gate hook, which
+intercepts issue-7-shaped paths on this branch): in tests/product-one-pager-gate-tests.sh
+the fixture that exercises the missing-JTBD-tuple facet check is:
+
+    run_write deny  missing-tuple-deny "$SURVEY" "We should probably fix onboarding somehow."
+
+`run_write` captures stderr into a local `$stderr` variable but only ever asserts on
+`$got` (the exit-code-derived allow/deny), never on `$stderr` — unlike the four
+`malformed_stdin_test` fixtures a few lines below, which additionally call
+`report_stderr_nonempty "$stderr" "$3-stderr"`. Adding that one line to `run_write` and
+re-running `bash tests/product-one-pager-gate-tests.sh` turns `solution-before-tuple-deny`
+and `missing-tuple-deny` into failures with `stderr was empty, expected a reason string`
+(verified by manually invoking the hook with the same payload the fixture builds, piping
+into product-one-pager/hooks/methodology-gate.sh with stdout redirected away and stderr
+captured: exit code is 2 as expected, but the captured stderr string is empty).
+
+### Observed
+Denial is correct (`rc=2`), but stderr is empty for the gate's two primary
+methodology-violation fixtures. The gate's top-level `deny()`
+(product-one-pager/hooks/methodology-gate.sh:26) got the new
+`printf '%s\n' "$1" >&2` line, but the facet-check logic that actually judges the JTBD
+tuple runs inside a `python3 <<'PY'` heredoc later in the same file, which defines its
+own separate `deny(m)` (around line 130) that only does
+`sys.stdout.write('{"hookSpecificOutput":...}\n'); sys.exit(2)` — it never touches
+stderr. Every facet-check denial (missing JTBD tuple, solution-named-before-tuple,
+unreadable survey file, etc.) goes through this python-level deny, not the bash one, so
+none of them get the new stderr diagnostic added by this change.
+
+product-opportunity-solution-tree's equivalent python-embedded `deny()` (around line 124
+of that plugin's methodology-gate.sh) does write to `sys.stderr` as well as stdout, so
+this is not a company-wide pattern bug — it is specific to product-one-pager both missing
+that stderr write and its test file not catching the gap (the `run_write` helper captures
+`$stderr` but silently discards it for exactly these two cases).
+
+### Expected
+Either `report_stderr_nonempty` should be asserted on the `run_write` result for
+`solution-before-tuple-deny` and `missing-tuple-deny` (which would fail on current code),
+or the python-level `deny(m)` in product-one-pager/hooks/methodology-gate.sh should also
+write `m` to stderr, matching product-opportunity-solution-tree's equivalent function.

@@ -108,10 +108,15 @@ nonobject_json
 
 empty_payload() {
   td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"
-  printf '' \
-    | env CLAUDE_PROJECT_DIR="$td" CLAUDE_PLUGIN_ROOT_CORE="$CLAUDE_PLUGIN_ROOT_CORE" /bin/bash "$HOOKS/methodology-gate.sh" >/dev/null 2>&1
+  stderr="$(printf '' \
+    | env CLAUDE_PROJECT_DIR="$td" CLAUDE_PLUGIN_ROOT_CORE="$CLAUDE_PLUGIN_ROOT_CORE" /bin/bash "$HOOKS/methodology-gate.sh" 2>&1 1>/dev/null)"
   rc=$?; case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="exit-$rc" ;; esac
   rm -rf "$td"; report deny "$got" malformed-stdin-empty
+  if [ -n "$stderr" ] && [[ "$stderr" == *"empty stdin"* ]]; then
+    pass=$((pass+1)); printf 'ok     %-34s stderr-nonempty\n' malformed-stdin-empty-stderr
+  else
+    fail=$((fail+1)); printf 'FAIL   %-34s want=nonempty-with-reason got=%q\n' malformed-stdin-empty-stderr "$stderr"
+  fi
 }
 empty_payload
 
@@ -200,11 +205,16 @@ dotslash_path_test
 bash_write_deny() {
   td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"
   mkdir -p "$td/docs/issue-7/reports"
-  printf '{"tool_name":"Bash","tool_input":{"command":"echo hi >> docs/issue-7/reports/product-discovery.md"},"cwd":"%s"}' \
+  stderr="$(printf '{"tool_name":"Bash","tool_input":{"command":"echo hi >> docs/issue-7/reports/product-discovery.md"},"cwd":"%s"}' \
     "$td" \
-    | env CLAUDE_PROJECT_DIR="$td" CLAUDE_PLUGIN_ROOT_CORE="$CLAUDE_PLUGIN_ROOT_CORE" /bin/bash "$HOOKS/methodology-gate.sh" >/dev/null 2>&1
+    | env CLAUDE_PROJECT_DIR="$td" CLAUDE_PLUGIN_ROOT_CORE="$CLAUDE_PLUGIN_ROOT_CORE" /bin/bash "$HOOKS/methodology-gate.sh" 2>&1 1>/dev/null)"
   rc=$?; case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="exit-$rc" ;; esac
   rm -rf "$td"; report deny "$got" bash-write-to-record-path
+  if [ -n "$stderr" ] && [[ "$stderr" == *"Bash command targets"* ]]; then
+    pass=$((pass+1)); printf 'ok     %-34s stderr-nonempty\n' bash-write-to-record-path-stderr
+  else
+    fail=$((fail+1)); printf 'FAIL   %-34s want=nonempty-with-reason got=%q\n' bash-write-to-record-path-stderr "$stderr"
+  fi
 }
 bash_write_deny
 
@@ -220,11 +230,16 @@ bash_unrelated_allow
 
 missing_core() {
   td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"; mkdir -p "$td/docs/issue-7/proposals"
-  printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":"Guardrail: signup-error-rate must stay under 2%%."},"cwd":"%s"}' \
+  stderr="$(printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":"Guardrail: signup-error-rate must stay under 2%%."},"cwd":"%s"}' \
     "$PROPOSAL" "$td" \
-    | env CLAUDE_PROJECT_DIR="$td" CLAUDE_PLUGIN_ROOT_CORE="$td/no-such-core" /bin/bash "$HOOKS/methodology-gate.sh" >/dev/null 2>&1
+    | env CLAUDE_PROJECT_DIR="$td" CLAUDE_PLUGIN_ROOT_CORE="$td/no-such-core" /bin/bash "$HOOKS/methodology-gate.sh" 2>&1 1>/dev/null)"
   rc=$?; case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="exit-$rc" ;; esac
   rm -rf "$td"; report deny "$got" missing-core-denies
+  if [ -n "$stderr" ]; then
+    pass=$((pass+1)); printf 'ok     %-34s stderr-nonempty\n' missing-core-denies-stderr
+  else
+    fail=$((fail+1)); printf 'FAIL   %-34s want=nonempty-with-reason got=%q\n' missing-core-denies-stderr "$stderr"
+  fi
 }
 missing_core
 

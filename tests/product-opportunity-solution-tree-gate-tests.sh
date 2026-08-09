@@ -211,5 +211,34 @@ printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":"nothing"}
 rc=$?; case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="exit-$rc" ;; esac
 rm -rf "$td"; report deny "$got" missing-core-denies
 
+# stderr diagnostics: forced-refusal fixtures must write a human-readable
+# reason naming the unmet element to stderr, not just the stdout JSON.
+
+# survey missing OST vocabulary -> stderr names "OST branch vocabulary"
+td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"
+mkdir -p "$td/docs/issue-7/reports/product-discovery" "$td/docs/issue-7/proposals"
+stderr="$(printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":%s},"cwd":"%s"}' \
+    "$SURVEY" "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$SURVEY_BAD")" "$td" \
+  | env CLAUDE_PROJECT_DIR="$td" CLAUDE_PLUGIN_ROOT_CORE="$CLAUDE_PLUGIN_ROOT_CORE" /bin/bash "$HOOKS/methodology-gate.sh" 2>&1 1>/dev/null)"
+rm -rf "$td"
+if [ -n "$stderr" ] && printf '%s' "$stderr" | grep -q "OST branch vocabulary"; then got=has-reason; else got=empty-or-missing; fi
+report has-reason "$got" survey-ost-vocab-missing-stderr
+
+# empty stdin -> stderr names "empty tool-use payload"
+td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"
+stderr="$(printf '' \
+  | env CLAUDE_PROJECT_DIR="$td" CLAUDE_PLUGIN_ROOT_CORE="$CLAUDE_PLUGIN_ROOT_CORE" /bin/bash "$HOOKS/methodology-gate.sh" 2>&1 1>/dev/null)"
+rm -rf "$td"
+if [ -n "$stderr" ] && printf '%s' "$stderr" | grep -q "empty tool-use payload"; then got=has-reason; else got=empty-or-missing; fi
+report has-reason "$got" empty-stdin-stderr
+
+# no project root determinable -> stderr names "project root"
+td="$(cd "$(mktemp -d)" && pwd -P)"
+stderr="$(cd "$td" && printf '{"tool_name":"Write","tool_input":{"file_path":"docs/issue-7/reports/product-discovery.md","content":"x"},"cwd":"%s"}' "$td" \
+  | env -u CLAUDE_PROJECT_DIR CLAUDE_PLUGIN_ROOT_CORE="$CLAUDE_PLUGIN_ROOT_CORE" /bin/bash "$HOOKS/methodology-gate.sh" 2>&1 1>/dev/null)"
+rm -rf "$td"
+if [ -n "$stderr" ] && printf '%s' "$stderr" | grep -q "project root"; then got=has-reason; else got=empty-or-missing; fi
+report has-reason "$got" no-project-root-stderr
+
 printf '\n== %d passed, %d failed ==\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

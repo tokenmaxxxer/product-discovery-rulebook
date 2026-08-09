@@ -26,13 +26,14 @@ gate_kill_switch_active "${PRODUCT_ONE_PAGER_GATE_OFF:-}" || { trap - EXIT; exit
 deny() {
   printf '{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":%s}}\n' \
     "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1" 2>/dev/null || echo '"product-one-pager: refused"')"
+  printf '%s\n' "$1" >&2
   exit 2
 }
 
-command -v python3 >/dev/null 2>&1 || deny "product-one-pager: refused — python3 unavailable"
+command -v python3 >/dev/null 2>&1 || deny "product-one-pager: refused — python3 unavailable ; required by product-one-pager/hooks/methodology-gate.sh — see docs/handbooks/tests.md"
 
 payload="$(cat 2>/dev/null || true)"
-[ -n "$payload" ] || deny "product-one-pager: refused — empty tool-use payload; cannot evaluate the gate on nothing"
+[ -n "$payload" ] || deny "product-one-pager: refused — empty tool-use payload; cannot evaluate the gate on nothing ; required by product-one-pager/hooks/methodology-gate.sh — see docs/handbooks/tests.md"
 
 get_field() {
   printf '%s' "$payload" | python3 -c "
@@ -68,7 +69,7 @@ try:
 except Exception:
     sys.exit(1)
 sys.exit(0 if isinstance(obj, dict) else 1)
-' || deny "product-one-pager: refused — the tool-call payload is not a valid JSON object; failing closed"
+' || deny "product-one-pager: refused — the tool-call payload is not a valid JSON object; failing closed ; required by product-one-pager/hooks/methodology-gate.sh — see docs/handbooks/tests.md"
 
 tool_name="$(get_field tool_name)"
 file_path="$(get_field tool_input file_path)"
@@ -83,7 +84,7 @@ if [ "$tool_name" = "Bash" ] && [ -n "$command_str" ]; then
   while IFS= read -r tok; do
     [ -n "$tok" ] || continue
     if printf '%s' "$tok" | grep -qE '(^|/)docs/issue-[0-9]+/reports/product-discovery/current-state\.md$'; then
-      deny "product-one-pager: refused — a Bash command may write to the current-state survey; this gate cannot verify the JTBD facet on a shell-redirected write — use Write/Edit/MultiEdit instead"
+      deny "product-one-pager: refused — a Bash command may write to the current-state survey; this gate cannot verify the JTBD facet on a shell-redirected write — use Write/Edit/MultiEdit instead ; required by product-one-pager/hooks/methodology-gate.sh — see docs/handbooks/tests.md"
     fi
   done <<EOF
 $(gate_bash_write_targets "$command_str")
@@ -128,6 +129,7 @@ try:
 
     def deny(m):
         payload = "product-one-pager: refused — " + m
+        sys.stderr.write(payload + "\n")
         sys.stdout.write(
             '{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":%s}}\n'
             % json.dumps(payload)
@@ -329,6 +331,6 @@ except Exception as _fc_e:
 PY
 _fc_rc=$?
 if [ "$_fc_rc" -ne 0 ] && [ "$_fc_rc" -ne 2 ]; then
-  deny "product-one-pager: refused — fail-closed: internal error (judge exited $_fc_rc)"
+  deny "product-one-pager: refused — fail-closed: internal error (judge exited $_fc_rc) ; required by product-one-pager/hooks/methodology-gate.sh — see docs/handbooks/tests.md"
 fi
 exit "$_fc_rc"

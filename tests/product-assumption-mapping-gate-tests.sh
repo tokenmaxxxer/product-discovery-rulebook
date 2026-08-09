@@ -24,12 +24,24 @@ report() { if [ "$2" = "$1" ]; then pass=$((pass+1)); printf 'ok     %-34s %s\n'
 TARGET=docs/issue-77/proposals/2026-07-28-product-discovery.md
 CURRENT_STATE=docs/issue-77/reports/product-discovery/current-state.md
 
+LAST_STDERR=""
 run_payload() {
   # $1=want $2=name $3=payload-json $4=cwd-dir $5..=extra env assignments (VAR=VAL)
   want="$1"; name="$2"; payload="$3"; cwd_dir="$4"; shift 4
-  printf '%s' "$payload" | env CLAUDE_PROJECT_DIR="$cwd_dir" CLAUDE_PLUGIN_ROOT_CORE="$CLAUDE_PLUGIN_ROOT_CORE" "$@" /bin/bash "$HOOKS/methodology-gate.sh" >/dev/null 2>&1
+  LAST_STDERR="$(printf '%s' "$payload" | env CLAUDE_PROJECT_DIR="$cwd_dir" CLAUDE_PLUGIN_ROOT_CORE="$CLAUDE_PLUGIN_ROOT_CORE" "$@" /bin/bash "$HOOKS/methodology-gate.sh" 2>&1 1>/dev/null)"
   rc=$?; case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="exit-$rc" ;; esac
   report "$want" "$got" "$name"
+}
+
+# Assert the last run_payload call's captured stderr is non-empty and names
+# the unmet element (forced-refusal fixtures only).
+check_stderr_nonempty() {
+  name="$1"
+  if [ -n "$LAST_STDERR" ]; then
+    pass=$((pass+1)); printf 'ok     %-34s stderr-non-empty\n' "$name"
+  else
+    fail=$((fail+1)); printf 'FAIL   %-34s want=non-empty-stderr got=empty\n' "$name"
+  fi
 }
 
 # run want name content [skip_current_state]
@@ -53,6 +65,7 @@ run allow citation-zero-pass "$ZERO_CITATION"
 BAD_CITATION='# Proposal
 - Evidence: 3 interviews said users like it.'
 run deny citation-missing-date "$BAD_CITATION"
+check_stderr_nonempty citation-missing-date-stderr
 
 GOOD_CITATION='# Proposal
 - Evidence: 3 interviews, approx 2026-06, paraphrase: users struggle with onboarding.'
@@ -70,6 +83,7 @@ RICE_MISSING='# Proposal
 - candidate B
 No scoring here.'
 run deny rice-required-deny "$RICE_MISSING"
+check_stderr_nonempty rice-required-deny-stderr
 
 ICE_FLAGGED='# Proposal
 - candidate A
@@ -87,6 +101,7 @@ run deny ice-unflagged-deny "$ICE_UNFLAGGED"
 
 # order constraint: current-state.md absent
 run deny order-constraint-deny "$ZERO_CITATION" skip
+check_stderr_nonempty order-constraint-deny-stderr
 run allow order-constraint-pass "$ZERO_CITATION"
 
 # --- semantic-upgrade regression pair: citation anchoring -------------------
@@ -112,14 +127,17 @@ run deny citation-anchor-denies-heading-bullet-missing-date "$BAD_UNDER_HEADING"
 # --- malformed stdin: truncated, non-object top-level, empty payload -------
 td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"
 run_payload deny malformed-json-truncated-deny '{"tool_name":"Write","tool_in' "$td"
+check_stderr_nonempty malformed-json-truncated-stderr
 rm -rf "$td"
 
 td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"
 run_payload deny malformed-json-nonobject-deny '["not", "an", "object"]' "$td"
+check_stderr_nonempty malformed-json-nonobject-stderr
 rm -rf "$td"
 
 td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"
 run_payload deny malformed-json-empty-deny '' "$td"
+check_stderr_nonempty malformed-json-empty-stderr
 rm -rf "$td"
 
 # unrelated path pass-through

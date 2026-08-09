@@ -26,11 +26,15 @@ report() { if [ "$2" = "$1" ]; then pass=$((pass+1)); printf 'ok     %-34s %s\n'
 
 SURVEY=docs/issue-7/reports/product-discovery/current-state.md
 
+report_stderr_nonempty() { # stderr name
+  if [ -n "$1" ]; then pass=$((pass+1)); printf 'ok     %-34s stderr non-empty\n' "$2"; else fail=$((fail+1)); printf 'FAIL   %-34s stderr was empty, expected a reason string\n' "$2"; fi
+}
+
 run_write() { # want name file content [extra_env]
   td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"; mkdir -p "$td/$(dirname "$3")"
-  printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":%s},"cwd":"%s"}' \
+  stderr="$(printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":%s},"cwd":"%s"}' \
     "$3" "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$4")" "$td" \
-    | env ${5:-} CLAUDE_PLUGIN_ROOT_CORE="$CLAUDE_PLUGIN_ROOT_CORE" CLAUDE_PROJECT_DIR="$td" /bin/bash "$HOOKS/methodology-gate.sh" >/dev/null 2>&1
+    | env ${5:-} CLAUDE_PLUGIN_ROOT_CORE="$CLAUDE_PLUGIN_ROOT_CORE" CLAUDE_PROJECT_DIR="$td" /bin/bash "$HOOKS/methodology-gate.sh" 2>&1 1>/dev/null)"
   rc=$?; case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="exit-$rc" ;; esac
   rm -rf "$td"; report "$1" "$got" "$2"
 }
@@ -56,15 +60,18 @@ Circumstance: during peak-hour ticket floods.
 Desired outcome: tickets routed to the right owner within a minute.'
 
 run_write deny  solution-before-tuple-deny "$SURVEY" "$SOLUTION_FIRST"
+report_stderr_nonempty "$stderr" "solution-before-tuple-deny-stderr"
 
 run_write deny  missing-tuple-deny "$SURVEY" "We should probably fix onboarding somehow."
+report_stderr_nonempty "$stderr" "missing-tuple-deny-stderr"
 
 # Malformed stdin: not valid JSON at all.
 malformed_stdin_test() { # want payload name
   td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"; mkdir -p "$td/$(dirname "$SURVEY")"
-  printf '%s' "$2" | env CLAUDE_PLUGIN_ROOT_CORE="$CLAUDE_PLUGIN_ROOT_CORE" CLAUDE_PROJECT_DIR="$td" /bin/bash "$HOOKS/methodology-gate.sh" >/dev/null 2>&1
+  stderr="$(printf '%s' "$2" | env CLAUDE_PLUGIN_ROOT_CORE="$CLAUDE_PLUGIN_ROOT_CORE" CLAUDE_PROJECT_DIR="$td" /bin/bash "$HOOKS/methodology-gate.sh" 2>&1 1>/dev/null)"
   rc=$?; case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="exit-$rc" ;; esac
   rm -rf "$td"; report deny "$got" "$3"
+  report_stderr_nonempty "$stderr" "$3-stderr"
 }
 malformed_stdin_test deny 'not json at all' malformed-stdin-not-json-deny
 malformed_stdin_test deny '{"tool_name":"Write"' malformed-stdin-truncated-deny
@@ -203,11 +210,12 @@ run_write allow well-formed-labeled-survey-allows "$SURVEY" "$WELL_FORMED_LABELE
 # must deny (exit 2), not silently allow (issue-75 fix).
 missing_core_test() {
   td="$(cd "$(mktemp -d)" && pwd -P)"; git init -q "$td"; mkdir -p "$td/$(dirname "$SURVEY")"
-  printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":%s},"cwd":"%s"}' \
+  stderr="$(printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":%s},"cwd":"%s"}' \
     "$SURVEY" "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$JTBD")" "$td" \
-    | env CLAUDE_PLUGIN_ROOT_CORE="$td/no-such-core" CLAUDE_PROJECT_DIR="$td" /bin/bash "$HOOKS/methodology-gate.sh" >/dev/null 2>&1
+    | env CLAUDE_PLUGIN_ROOT_CORE="$td/no-such-core" CLAUDE_PROJECT_DIR="$td" /bin/bash "$HOOKS/methodology-gate.sh" 2>&1 1>/dev/null)"
   rc=$?; case "$rc" in 0) got=allow ;; 2) got=deny ;; *) got="exit-$rc" ;; esac
   rm -rf "$td"; report deny "$got" missing-core-denies
+  report_stderr_nonempty "$stderr" "missing-core-denies-stderr"
 }
 missing_core_test
 
